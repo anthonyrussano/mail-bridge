@@ -15,4 +15,4 @@ RUN apt-get clean
 RUN mkdir /config
 
 # Run ProtonMail Bridge on container startup
-CMD /usr/bin/protonmail-bridge --cli --config-dir /config
+CMD /usr/bin/protonmail-bridge --cli

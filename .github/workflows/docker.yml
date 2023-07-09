@@ -2,6 +2,7 @@
 name: 'build docker images'
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main

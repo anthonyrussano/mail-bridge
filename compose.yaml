@@ -1,0 +1,27 @@
+services:
+  bridge:
+    image: ghcr.io/anthonyrussano/mail-bridge:latest
+    build: .
+    container_name: mail-bridge
+    restart: unless-stopped
+    # Loopback by default. On a dedicated LAN host set BRIDGE_BIND (e.g. in
+    # .env) to that host's LAN or Tailscale IP. Bridge traffic is authenticated
+    # with the Bridge-generated password and uses a self-signed STARTTLS cert,
+    # so never expose these ports to the internet.
+    ports:
+      - "${BRIDGE_BIND:-127.0.0.1}:1143:2143"   # IMAP (STARTTLS)
+      - "${BRIDGE_BIND:-127.0.0.1}:1025:2025"   # SMTP (STARTTLS)
+    volumes:
+      - bridge-data:/home/bridge
+    environment:
+      BRIDGE_LOG_LEVEL: info
+    #   GPG_KEY_FILE: /run/secrets/bridge_gpg_key
+    # secrets:
+    #   - bridge_gpg_key
+
+volumes:
+  bridge-data:
+
+# secrets:
+#   bridge_gpg_key:
+#     file: ./secrets/bridge_gpg_key.asc

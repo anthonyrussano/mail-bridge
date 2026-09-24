@@ -1,0 +1,60 @@
+name: check for Bridge update
+
+# Polls Proton's official stable-channel feed. When it reports a newer version
+# than the Dockerfile pins, bump the pin on main and build/push a new image.
+on:
+  schedule:
+    - cron: "23 */6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: bridge-update
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      updated: ${{ steps.bump.outputs.updated }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Compare versions
+        id: bump
+        run: |
+          set -euo pipefail
+          latest="$(curl -fsSL https://proton.me/download/current_version_linux.json | jq -r .Version)"
+          current="$(grep -Po '^ARG BRIDGE_VERSION=\K\S+' Dockerfile)"
+          echo "current=$current latest=$latest"
+          if [[ ! "$latest" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::unexpected version string from feed: $latest"; exit 1
+          fi
+          # Only move forward, never downgrade.
+          if [[ "$latest" == "$current" || "$(printf '%s\n%s\n' "$current" "$latest" | sort -V | tail -1)" != "$latest" ]]; then
+            echo "updated=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          # Fail early if the signed .deb isn't downloadable yet.
+          curl -fsSI "https://proton.me/download/bridge/protonmail-bridge_${latest}-1_amd64.deb.sig" >/dev/null
+          sed -i "s/^ARG BRIDGE_VERSION=.*/ARG BRIDGE_VERSION=${latest}/" Dockerfile
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Bump Proton Mail Bridge to ${latest}"
+          git push
+          echo "updated=true" >> "$GITHUB_OUTPUT"
+          echo "### Bridge ${current} → ${latest}" >> "$GITHUB_STEP_SUMMARY"
+
+  # Pushes made with GITHUB_TOKEN don't trigger other workflows, so call the
+  # build explicitly.
+  build:
+    needs: check
+    if: needs.check.outputs.updated == 'true'
+    uses: ./.github/workflows/docker.yml
+    with:
+      ref: main
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
